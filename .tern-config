@@ -1,0 +1,11 @@
+{
+  "plugins": {
+    "complete_strings": {},
+    "modules": {},
+    "es_modules": {},
+    "node": {},
+    "node_resolve": {},
+    "webpack": {}
+  },
+  "ecmaVersion": 6
+}
