@@ -1,7 +1,8 @@
 set nocompatible
 filetype off
 
-set term=screen-256color
+set t_Co=256
+set termguicolors
 
 " Set the runtime path to include Vundle and initialization
 set rtp+=~/.vim/bundle/Vundle.vim
@@ -30,6 +31,7 @@ Plugin 'bronson/vim-trailing-whitespace'
 Plugin 'myusuf3/numbers.vim'
 Plugin 'tpope/vim-repeat'
 Plugin 'othree/jspc.vim'
+Plugin 'jparise/vim-graphql'
 Plugin 'pangloss/vim-javascript'
 Plugin 'jelera/vim-javascript-syntax'
 let g:javascript_plugin_flow = 1
@@ -97,9 +99,7 @@ Plugin 'Xuyuanp/nerdtree-git-plugin'
 " file extension icons
 Plugin 'ryanoasis/vim-devicons'
 set encoding=utf8
-
-" nerdtree icon highlighting
-Plugin 'tiagofumo/vim-nerdtree-syntax-highlight'
+set guifont=Droid\ Sans\ Mono\ for\ Powerline\ Plus\ Nerd\ File\ Types:h12
 
 Plugin 'scrooloose/syntastic'
 set statusline+=%#warningmsg#
@@ -150,6 +150,9 @@ set wildmode=list:longest
 
 " case-sensitive if expression contains a capital letter
 set smartcase
+
+" Intuitive backspacing
+set backspace=indent,eol,start
 
 " show line numbers.
 set number
