@@ -11,3 +11,4 @@ ln -s ${BASEDIR}/.vimrc ~/.vimrc
 
 # Tmux
 ln -s ${BASEDIR}/.tmux.conf ~/.tmux.conf
+ln -s ${BASEDIR}/.tmuxinator.zsh ~/.tmuxinator.zsh

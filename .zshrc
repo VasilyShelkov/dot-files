@@ -10,6 +10,7 @@ setopt CORRECT
 export ZSH=/Users/vsh05/.oh-my-zsh
 export PGDATA='/usr/local/var/postgres'
 export PGHOST=localhost
+export PATH="$PATH:`yarn global bin`"
 
 # Set name of the theme to load. Optionally, if you set this to "random"
 # it'll load a random theme each time that oh-my-zsh is loaded.
@@ -59,3 +60,5 @@ alias ete='vim ~/.tern-config'
 
 export NVM_DIR="/Users/vsh05/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm
+
+source ~/.tmuxinator.zsh
