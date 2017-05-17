@@ -10,8 +10,10 @@ My VIM/TMUX configurations
 
 5) `./setup.sh`
 
-6) `git clone https://github.com/VundleVim/Vundle.vim.git ~/.vim/bundle/Vundle.vim` to get the package manager working
+6) `gem install tmuxinator`
 
-7) vim .vimrc then `:PluginInstall`
+7) `git clone https://github.com/VundleVim/Vundle.vim.git ~/.vim/bundle/Vundle.vim` to get the package manager working
 
-8) restart terminal and voila
+8) vim .vimrc then `:PluginInstall`
+
+9) restart terminal and voila
