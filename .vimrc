@@ -211,3 +211,7 @@ ab it, it('', () => {<CR>});<ESC>O
 " :PluginSearch foo - searches for foo; append `!` to refresh local cache
 " :PluginClean      - confirms removal of unused plugins; append `!` to auto-approve removal
 
+" Format javascript using prettier https://github.com/prettier/prettier#vanilla-approach
+autocmd FileType javascript setlocal formatprg=prettier\ --stdin\ --single-quote\ --print-width\ 120
+autocmd BufWritePre *.js :normal gggqG
+autocmd BufWritePre *.js exe "normal! gggqG\<C-o>\<C-o>"
