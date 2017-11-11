@@ -7,7 +7,7 @@ export TERM='xterm-256color'
 setopt CORRECT
 
 # Path to your oh-my-zsh installation.
-export ZSH=/Users/vsh05/.oh-my-zsh
+export ZSH=/Users/vasilyshelkov/.oh-my-zsh
 export PGDATA='/usr/local/var/postgres'
 export PGHOST=localhost
 export PATH="$PATH:`yarn global bin`"
@@ -58,7 +58,15 @@ alias ez='vim ~/.zshrc'
 alias et='vim ~/.tmux.conf'
 alias ete='vim ~/.tern-config'
 
-export NVM_DIR="/Users/vsh05/.nvm"
+export NVM_DIR="/Users/vasilyshelkov/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm
 
 source ~/.tmuxinator.zsh
+
+# Add RVM to PATH for scripting. Make sure this is the last PATH variable change.
+export PATH="$PATH:$HOME/.rvm/bin"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+# key mappings have changed in iterm settings as well
+bindkey "^[a" beginning-of-line
+bindkey "^[e" end-of-line
