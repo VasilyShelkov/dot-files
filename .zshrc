@@ -21,7 +21,22 @@ ZSH_THEME="agnoster"
 # Custom plugins may be added to ~/.oh-my-zsh/custom/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(zsh-nvm command-not-found git history nvm sudo themes web-search zsh-syntax-highlighting)
+plugins=(
+  zsh-nvm
+  command-not-found
+  git
+  history
+  nvm
+  sudo
+  themes
+  web-search
+  zsh-syntax-highlighting
+  yarn
+  yarn-autocompletions
+  tmuxinator
+  docker
+  encode64
+)
 
 export EDITOR="vim"
 export USE_EDITOR=$EDITOR
@@ -57,6 +72,7 @@ alias ev='vim ~/.vimrc'
 alias ez='vim ~/.zshrc'
 alias et='vim ~/.tmux.conf'
 alias ete='vim ~/.tern-config'
+alias mux='tmuxinator'
 
 export NVM_DIR="/Users/vasilyshelkov/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm
