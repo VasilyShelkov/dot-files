@@ -1,6 +1,11 @@
 # dot-files
 My VIM/TMUX configurations
 
+## Requirements
+- tmux
+- nvm
+- pyenv
+
 ## Setup
 1) `git clone https://github.com/VasilyShelkov/dot-files.git`
 
