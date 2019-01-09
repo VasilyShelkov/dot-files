@@ -3,7 +3,7 @@ My VIM/TMUX configurations
 
 ## Requirements
 - tmux
-- nvm
+- nvm (`mkdir /Users/XXX/.nvm`)
 - pyenv
 
 ## Setup
@@ -11,7 +11,7 @@ My VIM/TMUX configurations
 
 2) `cd dot-files`
 
-3) make sure to change https://github.com/VasilyShelkov/dot-files/blob/master/.zshrc#L10 and https://github.com/VasilyShelkov/dot-files/blob/master/.zshrc#L60
+3) make sure to change https://github.com/VasilyShelkov/dot-files/blob/master/.zshrc#L10 and https://github.com/VasilyShelkov/dot-files/blob/master/.zshrc#L77
 
 5) `./setup.sh`
 
