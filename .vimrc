@@ -16,15 +16,9 @@ endif
 call vundle#begin()
 Plugin 'VundleVim/Vundle.vim'
 
-" Theme color
-Plugin 'morhetz/gruvbox'
-set background=dark
-colorscheme gruvbox
-
 Plugin 'mhinz/vim-startify'
 Plugin 'ervandew/supertab'
 Plugin 'moll/vim-node'
-Plugin 'Valloric/YouCompleteMe'
 Plugin 'raimondi/delimitmate'
 Plugin 'othree/html5.vim'
 Plugin 'elzr/vim-json'
@@ -53,9 +47,6 @@ let g:ackprg = 'ag --vimgrep'
 
 Plugin 'airblade/vim-gitgutter'
 let g:gitgutter_grep_command = 'grep -e'
-
-Plugin 'yggdroot/indentline'
-let g:indentLine_color_term = 238
 
 Plugin 'mxw/vim-jsx'
 let g:jsx_ext_required = 0
@@ -122,6 +113,12 @@ highlight link SyntasticWarningSign SignColumn
 
 call vundle#end()
 " end of plugins
+"
+" Theme color
+Plugin 'morhetz/gruvbox'
+set background=dark
+autocmd vimenter * ++nested colorscheme gruvbox
+
 
 " quicker window movement
 nnoremap <C-j> <C-w>j
