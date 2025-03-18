@@ -1,9 +1,10 @@
 # wtree: Create a new worktree for each given branch.
-# Usage: wtree [ -p|--pnpm ] [ -n|--no-env ] branch1 branch2 ...
+# Usage: wtree [ -p|--pnpm ] [ -n|--no-env ] [ -q|--quiet ] branch1 branch2 ...
 #
 # Options:
 #   -p, --pnpm: Run "pnpm install" in the new worktree after creating it
 #   -n, --no-env: Skip copying environment files from the main repository
+#   -q, --quiet: Show minimal output (only errors and final path)
 #
 # This function does the following:
 #   1. Parses command-line arguments.
@@ -23,6 +24,7 @@ wtree() {
   # Flags for optional behavior
   local install_deps=false
   local copy_env=true
+  local quiet_mode=false
   local branches=()
 
   # Parse command-line arguments
@@ -36,6 +38,10 @@ wtree() {
         copy_env=false
         shift
         ;;
+      -q|--quiet)
+        quiet_mode=true
+        shift
+        ;;
       *)
         branches+=("$1")
         shift
@@ -45,9 +51,10 @@ wtree() {
 
   # Ensure at least one branch name is provided.
   if [[ ${#branches[@]} -eq 0 ]]; then
-    echo "Usage: wtree [ -p|--pnpm ] [ -n|--no-env ] branch1 branch2 ..."
+    echo "Usage: wtree [ -p|--pnpm ] [ -n|--no-env ] [ -q|--quiet ] branch1 branch2 ..."
     echo "  -p, --pnpm: Run \"pnpm install\" in the new worktree"
     echo "  -n, --no-env: Skip copying environment files"
+    echo "  -q, --quiet: Show minimal output"
     return 1
   fi
 
@@ -81,11 +88,13 @@ wtree() {
     # Define the target path using a naming convention: <repoName>-<branch>
     local target_path="$worktree_parent/${repo_name}-${branch}"
     
-    echo "Processing branch: ${branch}"
+    if ! $quiet_mode; then
+      echo "\033[1;36m→ Processing branch: \033[1;33m${branch}\033[0m"
+    fi
 
     # Check if a worktree already exists at the target path.
     if git worktree list | grep -q "^${target_path}[[:space:]]"; then
-      echo "Error: Worktree already exists at ${target_path}. Skipping branch '${branch}'."
+      echo "\033[1;31m✖ Worktree already exists at ${target_path}\033[0m"
       continue
     fi
 
@@ -93,36 +102,48 @@ wtree() {
     if ! git show-ref --verify --quiet "refs/heads/${branch}"; then
       # Check if a remote branch with the same name exists
       if git ls-remote --exit-code --heads origin "${branch}" &>/dev/null; then
-        echo "Remote branch 'origin/${branch}' exists. Creating local branch to track it..."
-        if ! git fetch origin "${branch}"; then
-          echo "Error: Failed to fetch 'origin/${branch}'. Skipping."
+        if ! $quiet_mode; then
+          echo "\033[1;34m↓ Found remote branch 'origin/${branch}', setting up tracking...\033[0m"
+        fi
+        
+        if ! git fetch origin "${branch}" 2>/dev/null; then
+          echo "\033[1;31m✖ Failed to fetch 'origin/${branch}'\033[0m"
           continue
         fi
-        if ! git branch --track "${branch}" "origin/${branch}"; then
-          echo "Error: Failed to create tracking branch for 'origin/${branch}'. Skipping."
+        
+        if ! git branch --track "${branch}" "origin/${branch}" 2>/dev/null; then
+          echo "\033[1;31m✖ Failed to create tracking branch\033[0m"
           continue
         fi
-        echo "Created local branch '${branch}' tracking 'origin/${branch}'."
+        
+        if ! $quiet_mode; then
+          echo "\033[1;32m✓ Tracking branch created\033[0m"
+        fi
       else
         # No remote branch exists, create from current branch
-        echo "Branch '${branch}' does not exist locally or remotely. Creating it from '${current_branch}'..."
-        if ! git branch "${branch}"; then
-          echo "Error: Failed to create branch '${branch}'. Skipping."
+        if ! $quiet_mode; then
+          echo "\033[1;34mℹ Creating new branch from '${current_branch}'...\033[0m"
+        fi
+        
+        if ! git branch "${branch}" 2>/dev/null; then
+          echo "\033[1;31m✖ Failed to create branch '${branch}'\033[0m"
           continue
         fi
       fi
     fi
 
     # Create the new worktree for the branch.
-    echo "Creating worktree for branch '${branch}' at ${target_path}..."
-    if ! git worktree add "$target_path" "${branch}"; then
-      echo "Error: Failed to create worktree for branch '${branch}'. Skipping."
+    if ! $quiet_mode; then
+      echo "\033[1;34mℹ Creating worktree...\033[0m"
+    fi
+    
+    if ! git worktree add "$target_path" "${branch}" &>/dev/null; then
+      echo "\033[1;31m✖ Failed to create worktree\033[0m"
       continue
     fi
 
     # Copy all .env files recursively from the main repository to the new worktree
     if $copy_env; then
-      echo "Copying environment files to new worktree..."
       # Find all .env* files in the main repository (including .env, .env.local, .env.development, etc.)
       local env_files=()
       while IFS= read -r -d '' file; do
@@ -133,6 +154,10 @@ wtree() {
       done < <(find "$repo_root" -type f -name ".env*" -print0 2>/dev/null)
       
       if [[ ${#env_files[@]} -gt 0 ]]; then
+        if ! $quiet_mode; then
+          echo "\033[1;34mℹ Copying environment files...\033[0m"
+        fi
+        
         local copied_count=0
         local skipped_count=0
         
@@ -145,53 +170,56 @@ wtree() {
           
           # Check if the file already exists in the target
           if [[ -f "$target_file" ]]; then
-            echo "  Skipped: $rel_path (already exists)"
             skipped_count=$((skipped_count + 1))
             continue
           fi
           
           # Create directory if needed
           if [[ ! -d "$target_dir" ]]; then
-            if ! mkdir -p "$target_dir"; then
-              echo "  Error: Could not create directory for $rel_path"
+            if ! mkdir -p "$target_dir" &>/dev/null; then
               skipped_count=$((skipped_count + 1))
               continue
             fi
           fi
           
           # Copy the file
-          if cp "$env_file" "$target_file"; then
-            echo "  Copied: $rel_path"
+          if cp "$env_file" "$target_file" &>/dev/null; then
             copied_count=$((copied_count + 1))
           else
-            echo "  Error: Failed to copy $rel_path"
             skipped_count=$((skipped_count + 1))
           fi
         done
         
-        echo "Environment files: $copied_count copied, $skipped_count skipped."
+        if ! $quiet_mode; then
+          echo "\033[1;32m✓ Environment files: \033[0m\033[1;33m$copied_count\033[0m copied, \033[1;30m$skipped_count\033[0m skipped"
+        fi
       else
-        echo "No environment files found to copy."
+        if ! $quiet_mode; then
+          echo "\033[1;33m⚠ No environment files found\033[0m"
+        fi
       fi
     fi
 
     # If the install flag is set, run "pnpm install" in the new worktree.
     if $install_deps; then
-      echo "Installing dependencies in worktree for branch '${branch}'..."
-      if ! ( cd "$target_path" && pnpm install ); then
-        echo "Warning: Failed to install dependencies in '${target_path}'."
+      if ! $quiet_mode; then
+        echo "\033[1;34mℹ Installing dependencies...\033[0m"
+      fi
+      
+      if ! ( cd "$target_path" && pnpm install &>/dev/null ); then
+        echo "\033[1;31m✖ Failed to install dependencies\033[0m"
+      elif ! $quiet_mode; then
+        echo "\033[1;32m✓ Dependencies installed\033[0m"
       fi
     fi
 
+    # Display result
+    echo "\033[1;32m✅ Worktree created:\033[0m \033[1;33m${branch}\033[0m → \033[1;36m${target_path}\033[0m"
+
     # Optionally, open the worktree directory via a custom "cursor" command if available.
     if type cursor >/dev/null 2>&1; then
-      cursor "$target_path"
-    else
-      echo "Worktree created at: ${target_path}"
+      cursor "$target_path" &>/dev/null
     fi
-
-    echo "Worktree for branch '${branch}' created successfully."
-    echo "-----------------------------------------------------"
   done
 }
 
