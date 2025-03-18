@@ -1,0 +1,638 @@
+# wtree: Create a new worktree for each given branch.
+# Usage: wtree [ -p|--pnpm ] branch1 branch2 ...
+#
+# This function does the following:
+#   1. Parses command-line arguments; if -p/--pnpm is provided, it will later run "pnpm install".
+#   2. Determines the current branch and repository root.
+#   3. Uses a fixed parent directory (~/dev) to house all worktree directories.
+#   4. For each branch passed:
+#        - If the branch does not exist, it is created from the current branch.
+#        - It checks that a worktree for that branch does not already exist.
+#        - It then creates a worktree in ~/dev using a naming convention: <repoName>-<branch>.
+#        - If the install-deps flag is true, it runs "pnpm install" inside the new worktree.
+#        - Finally, it either opens the new worktree via the custom "cursor" command (if defined)
+#          or prints its path.
+wtree() {
+  # Flag to determine whether to run "pnpm install"
+  local install_deps=false
+  local branches=()
+
+  # Parse command-line arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -p|--pnpm)
+        install_deps=true
+        shift
+        ;;
+      *)
+        branches+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  # Ensure at least one branch name is provided.
+  if [[ ${#branches[@]} -eq 0 ]]; then
+    echo "Usage: wtree [ -p|--pnpm ] branch1 branch2 ..."
+    return 1
+  fi
+
+  # Determine the current branch; exit if not in a git repository.
+  local current_branch
+  current_branch=$(git rev-parse --abbrev-ref HEAD) || {
+    echo "Error: Not a git repository."
+    return 1
+  }
+
+  # Determine repository root and name.
+  local repo_root repo_name
+  repo_root=$(git rev-parse --show-toplevel) || {
+    echo "Error: Cannot determine repository root."
+    return 1
+  }
+  repo_name=$(basename "$repo_root")
+
+  # Set fixed parent directory for worktrees.
+  local worktree_parent="$HOME/dev"
+  # Ensure the worktree parent directory exists.
+  if [[ ! -d "$worktree_parent" ]]; then
+    if ! mkdir -p "$worktree_parent"; then
+      echo "Error: Failed to create worktree parent directory: $worktree_parent"
+      return 1
+    fi
+  fi
+
+  # Loop over each branch provided as argument.
+  for branch in "${branches[@]}"; do
+    # Define the target path using a naming convention: <repoName>-<branch>
+    local target_path="$worktree_parent/${repo_name}-${branch}"
+    
+    echo "Processing branch: ${branch}"
+
+    # Check if a worktree already exists at the target path.
+    if git worktree list | grep -q "^${target_path}[[:space:]]"; then
+      echo "Error: Worktree already exists at ${target_path}. Skipping branch '${branch}'."
+      continue
+    fi
+
+    # If the branch does not exist, create it from the current branch.
+    if ! git show-ref --verify --quiet "refs/heads/${branch}"; then
+      echo "Branch '${branch}' does not exist. Creating it from '${current_branch}'..."
+      if ! git branch "${branch}"; then
+        echo "Error: Failed to create branch '${branch}'. Skipping."
+        continue
+      fi
+    fi
+
+    # Create the new worktree for the branch.
+    echo "Creating worktree for branch '${branch}' at ${target_path}..."
+    if ! git worktree add "$target_path" "${branch}"; then
+      echo "Error: Failed to create worktree for branch '${branch}'. Skipping."
+      continue
+    fi
+
+    # Note: Environment file copying section removed for now
+
+    # If the install flag is set, run "pnpm install" in the new worktree.
+    if $install_deps; then
+      echo "Installing dependencies in worktree for branch '${branch}'..."
+      if ! ( cd "$target_path" && pnpm install ); then
+        echo "Warning: Failed to install dependencies in '${target_path}'."
+      fi
+    fi
+
+    # Optionally, open the worktree directory via a custom "cursor" command if available.
+    if type cursor >/dev/null 2>&1; then
+      cursor "$target_path"
+    else
+      echo "Worktree created at: ${target_path}"
+    fi
+
+    echo "Worktree for branch '${branch}' created successfully."
+    echo "-----------------------------------------------------"
+  done
+}
+
+# wtls: List and optionally clean up selected git worktrees
+#
+# Usage: wtls [-n|--no-status] [-d|--debug]
+#
+# Options:
+#   -n, --no-status: Hide git status for each worktree (uncommitted changes, etc.)
+#   -d, --debug: Show detailed debug output about worktree detection
+#
+# This function:
+#   1. Lists all worktrees in the ~/dev directory related to the current repository
+#   2. Shows git status information for each worktree by default
+#   3. Allows the user to select which worktrees to clean up by entering branch names
+#   4. Deletes the selected worktrees and their branches (except main/master)
+wtls() {
+  # Parse command-line arguments
+  local debug=false
+  local show_status=true # Default to showing status
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -d|--debug)
+        debug=true
+        shift
+        ;;
+      -n|--no-status)
+        show_status=false
+        shift
+        ;;
+      -s|--status) # Keep for backward compatibility
+        show_status=true
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Determine repository root and name
+  local repo_root repo_name
+  repo_root=$(git rev-parse --show-toplevel) || {
+    echo "Error: Not a git repository."
+    return 1
+  }
+  repo_name=$(basename "$repo_root")
+
+  if $debug; then
+    echo "DEBUG: Repository root: $repo_root"
+    echo "DEBUG: Repository name: $repo_name"
+  fi
+
+  # Fixed parent directory where worktrees are located
+  local worktree_parent="$HOME/dev"
+
+  # Get current worktree path to mark it
+  local current_worktree
+  current_worktree=$(git rev-parse --show-toplevel)
+  
+  echo "Gathering worktree information..."
+  
+  # Get worktrees from git worktree list
+  local git_worktree_output
+  git_worktree_output=$(git worktree list)
+  
+  # Show raw data in debug mode
+  if $debug; then
+    echo "DEBUG: Raw git worktree list output:"
+    echo "$git_worktree_output"
+    echo "DEBUG: Current worktree: $current_worktree"
+    echo "---"
+  fi
+  
+  # Print header for worktree list
+  echo "Worktrees for repository '$repo_name':"
+  echo "----------------------------------------------------------"
+  
+  # Initialize counters
+  local main_count=0
+  local worktree_count=0
+  
+  # Print the main repository first
+  local main_branch=$(git rev-parse --abbrev-ref HEAD)
+  echo "[MAIN] $main_branch (current)"
+  echo "    Path: $repo_root"
+  main_count=1
+  
+  # Process git worktree list output
+  while IFS= read -r line; do
+    # Skip empty lines
+    [[ -z "$line" ]] && continue
+    
+    # Extract the worktree path (first field)
+    local wt_path=$(echo "$line" | awk '{print $1}')
+    
+    if $debug; then
+      echo "Processing line: $line"
+      echo "wt_path: $wt_path"
+    fi
+    
+    # Skip empty paths
+    [[ -z "$wt_path" ]] && continue
+    
+    # Skip the main repository (already displayed)
+    [[ "$wt_path" == "$repo_root" ]] && continue
+    
+    # Extract branch from square brackets [branch]
+    local wt_branch=""
+    if [[ "$line" =~ \[([^]]+)\] ]]; then
+      wt_branch="${BASH_REMATCH[1]}"
+      if $debug; then echo "Branch from regex: $wt_branch"; fi
+    else
+      # Try to get branch from git
+      if [[ -d "$wt_path/.git" || -f "$wt_path/.git" ]]; then
+        wt_branch=$(cd "$wt_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        if $debug; then echo "Branch from git: $wt_branch"; fi
+      fi
+      
+      # If still no branch, use directory name
+      if [[ -z "$wt_branch" ]]; then
+        local dir_name=$(basename "$wt_path")
+        if [[ "$dir_name" == "$repo_name-"* ]]; then
+          wt_branch="${dir_name#$repo_name-}"
+          if $debug; then echo "Branch from directory name: $wt_branch"; fi
+        else
+          wt_branch="unknown"
+        fi
+      fi
+    fi
+    
+    # Skip main/master branches
+    if [[ "$wt_branch" == "main" || "$wt_branch" == "master" ]]; then
+      if $debug; then echo "Skipping protected branch: $wt_branch"; fi
+      main_count=$((main_count + 1))
+      continue
+    fi
+    
+    # Add this worktree if it's in our dev directory
+    if [[ "$wt_path" == "$worktree_parent/$repo_name"* ]]; then
+      # Mark if current
+      local marker=""
+      [[ "$wt_path" == "$current_worktree" ]] && marker=" (current)"
+      
+      # Check status if requested
+      local wt_state="state not checked"
+      if $show_status; then
+        if [[ -d "$wt_path" ]]; then
+          if $debug; then
+            echo "DEBUG: Checking status for '$wt_branch' at '$wt_path'"
+          fi
+
+          # First check for uncommitted changes
+          if ( cd "$wt_path" && git diff --no-ext-diff --quiet --exit-code && git diff --no-ext-diff --quiet --exit-code --cached ); then
+            # No uncommitted changes
+            if $debug; then
+              echo "DEBUG: No uncommitted changes"
+            fi
+            
+            # Check if current worktree has unique commits compared to main worktree
+            # Get the commit hash of the main worktree
+            local main_commit=$(cd "$repo_root" && git rev-parse HEAD)
+            # Get the commit hash of this worktree
+            local wt_commit=$(cd "$wt_path" && git rev-parse HEAD)
+            
+            if $debug; then
+              echo "DEBUG: Main commit: $main_commit"
+              echo "DEBUG: Worktree commit: $wt_commit"
+            fi
+            
+            if [[ "$main_commit" != "$wt_commit" ]]; then
+              # Commits are different, this branch has unique changes
+              if $debug; then
+                echo "DEBUG: Commits are different"
+              fi
+              
+              # Get the merge base to see which is ahead
+              local merge_base=$(cd "$wt_path" && git merge-base "$main_commit" "$wt_commit")
+              if $debug; then
+                echo "DEBUG: Merge base: $merge_base"
+              fi
+              
+              if [[ "$merge_base" == "$main_commit" ]]; then
+                # Main is an ancestor of the worktree, so worktree is ahead
+                local ahead_count=$(cd "$wt_path" && git rev-list --count "$main_commit..$wt_commit")
+                wt_state="unique commits ($ahead_count ahead of main)"
+                if $debug; then
+                  echo "DEBUG: Worktree is ahead of main by $ahead_count commits"
+                fi
+              elif [[ "$merge_base" == "$wt_commit" ]]; then
+                # Worktree is an ancestor of main, so worktree is behind
+                local behind_count=$(cd "$wt_path" && git rev-list --count "$wt_commit..$main_commit")
+                wt_state="behind main ($behind_count commits)"
+                if $debug; then
+                  echo "DEBUG: Worktree is behind main by $behind_count commits"
+                fi
+              else
+                # They have diverged
+                local ahead_count=$(cd "$wt_path" && git rev-list --count "$merge_base..$wt_commit")
+                local behind_count=$(cd "$wt_path" && git rev-list --count "$merge_base..$main_commit")
+                wt_state="diverged from main (ahead $ahead_count, behind $behind_count)"
+                if $debug; then
+                  echo "DEBUG: Worktree has diverged: ahead $ahead_count, behind $behind_count"
+                fi
+              fi
+            else
+              wt_state="identical to main branch"
+              if $debug; then
+                echo "DEBUG: Commits are identical"
+              fi
+            fi
+            
+            # Check for remote status
+            if ( cd "$wt_path" && git ls-remote --exit-code --heads origin "$wt_branch" &>/dev/null ); then
+              if $debug; then
+                echo "DEBUG: Branch exists on remote"
+              fi
+              
+              # Check if we're ahead/behind remote
+              local remote_state=""
+              local ahead_count=$(cd "$wt_path" && git rev-list --count "origin/$wt_branch..$wt_branch" 2>/dev/null || echo "0")
+              local behind_count=$(cd "$wt_path" && git rev-list --count "$wt_branch..origin/$wt_branch" 2>/dev/null || echo "0")
+              
+              if [[ $ahead_count -gt 0 && $behind_count -gt 0 ]]; then
+                remote_state=", diverged from remote (ahead $ahead_count, behind $behind_count)"
+              elif [[ $ahead_count -gt 0 ]]; then
+                remote_state=", unpushed commits ($ahead_count)"
+              elif [[ $behind_count -gt 0 ]]; then
+                remote_state=", behind remote ($behind_count)"
+              else
+                remote_state=", synced with remote"
+              fi
+              
+              # Append remote state to the main state message
+              wt_state="$wt_state$remote_state"
+            else
+              if $debug; then
+                echo "DEBUG: Branch doesn't exist on remote"
+              fi
+              # Only show local-only if we haven't already noted a relationship with main
+              if [[ "$wt_state" == "identical to main branch" ]]; then
+                wt_state="clean (local only)"
+              else
+                wt_state="$wt_state (local only)"
+              fi
+            fi
+          else
+            # Has uncommitted changes
+            if ( cd "$wt_path" && git diff --no-ext-diff --quiet --exit-code ); then
+              wt_state="staged changes"
+            else
+              wt_state="uncommitted changes"
+            fi
+            if $debug; then
+              echo "DEBUG: Has changes: $wt_state"
+            fi
+          fi
+        else
+          wt_state="directory not accessible"
+          if $debug; then
+            echo "DEBUG: Directory not accessible"
+          fi
+        fi
+      fi
+      
+      # Display the worktree
+      if $show_status; then
+        echo "[$wt_branch] $wt_branch$marker - State: $wt_state"
+      else
+        echo "[$wt_branch] $wt_branch$marker"
+      fi
+      echo "    Path: $wt_path"
+      
+      worktree_count=$((worktree_count + 1))
+      
+      if $debug; then
+        echo "Added worktree: $wt_path ($wt_branch) - $wt_state"
+      fi
+    fi
+  done <<< "$git_worktree_output"
+  
+  # Show total count
+  echo "----------------------------------------------------------"
+  echo "Found $main_count main worktree(s) and $worktree_count additional worktree(s)"
+  
+  # Exit if no additional worktrees found
+  if [[ $worktree_count -eq 0 ]]; then
+    echo "No additional worktrees found for cleanup."
+    return 0
+  fi
+  
+  # Prompt for cleanup
+  echo "----------------------------------------------------------"
+  echo "Enter the branch names to clean up (space-separated), or press Enter to exit:"
+  read -r selection
+  
+  if [[ -z "$selection" ]]; then
+    echo "No worktrees selected for cleanup. Exiting."
+    return 0
+  fi
+  
+  # Process selection
+  for branch in $selection; do
+    # Skip if empty
+    [[ -z "$branch" ]] && continue
+    
+    # Skip main/master
+    if [[ "$branch" == "main" || "$branch" == "master" ]]; then
+      echo "Cannot remove main/master branch. Skipping."
+      continue
+    fi
+    
+    # Find the worktree path for this branch
+    local branch_path=""
+    while IFS= read -r line; do
+      # Extract the path (first field) directly without using awk
+      local line_path=$(echo "$line" | cut -d' ' -f1)
+      
+      # Check if this line contains our branch
+      if [[ "$line" =~ \[([^]]+)\] && "${BASH_REMATCH[1]}" == "$branch" ]]; then
+        branch_path="$line_path"
+        break
+      fi
+    done <<< "$git_worktree_output"
+    
+    # If not found in git worktree list, try looking in the dev directory
+    if [[ -z "$branch_path" ]]; then
+      local potential_path="$worktree_parent/$repo_name-$branch"
+      if [[ -d "$potential_path" ]]; then
+        branch_path="$potential_path"
+      fi
+    fi
+    
+    # Skip if not found
+    if [[ -z "$branch_path" ]]; then
+      echo "No worktree found for branch '$branch'. Skipping."
+      continue
+    fi
+    
+    # Skip if it's the current worktree
+    if [[ "$branch_path" == "$current_worktree" ]]; then
+      echo "Cannot remove current worktree at $branch_path. Skipping."
+      continue
+    fi
+    
+    echo "Cleaning up worktree for branch '$branch' at $branch_path..."
+    
+    # Check for changes
+    if $show_status; then
+      if ! ( cd "$branch_path" && git diff --no-ext-diff --quiet --exit-code && git diff --no-ext-diff --quiet --exit-code --cached ); then
+        echo "Warning: This worktree has uncommitted changes."
+        read -q "REPLY?Are you sure you want to remove it? (y/n) "
+        echo
+        
+        if [[ $REPLY != "y" ]]; then
+          echo "Skipping worktree for branch '$branch'."
+          continue
+        fi
+      fi
+    fi
+    
+    # Remove the worktree
+    if git worktree remove "$branch_path" --force; then
+      echo "Worktree at $branch_path removed."
+      
+      # Delete the branch
+      echo "Deleting branch '$branch'..."
+      if git branch -D "$branch"; then
+        echo "Branch '$branch' deleted."
+      else
+        echo "Warning: Failed to delete branch '$branch'."
+      fi
+    else
+      echo "Warning: Failed to remove worktree at $branch_path."
+      
+      # Try manual removal
+      echo "Attempting manual directory removal..."
+      if rm -rf "$branch_path"; then
+        echo "Directory $branch_path manually removed."
+      else
+        echo "Error: Failed to manually remove directory $branch_path."
+      fi
+    fi
+  done
+  
+  echo "Cleanup complete."
+}
+
+
+# wtmerge: Merge changes from a specified worktree branch into main.
+#
+# Usage: wtmerge <branch-to-keep> [--cleanup-all]
+#
+# This function does the following:
+#   1. Verifies that the branch to merge (branch-to-keep) exists as an active worktree.
+#   2. Checks for uncommitted changes in that worktree:
+#        - If changes exist, it attempts to stage and commit them.
+#        - It gracefully handles the situation where there are no changes.
+#   3. Switches the current (main) worktree to the "main" branch.
+#   4. Merges the specified branch into main, with proper error checking.
+#   5. If --cleanup-all flag is provided, it removes all worktrees and deletes their branches (except main).
+wtmerge() {
+  # Parse arguments - check if we should cleanup all worktrees
+  local branch_to_keep=""
+  local cleanup_all=false
+  
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --cleanup-all)
+        cleanup_all=true
+        shift
+        ;;
+      *)
+        branch_to_keep="$1"
+        shift
+        ;;
+    esac
+  done
+
+  # Ensure branch name is provided
+  if [ -z "$branch_to_keep" ]; then
+    echo "Usage: wtmerge <branch-to-keep> [--cleanup-all]"
+    echo "  --cleanup-all: Also remove all worktrees and their branches after merging"
+    return 1
+  fi
+
+  # Determine the repository root and its name.
+  local repo_root repo_name
+  repo_root=$(git rev-parse --show-toplevel) || {
+    echo "Error: Not a git repository."
+    return 1
+  }
+  repo_name=$(basename "$repo_root")
+
+  # Fixed parent directory where worktrees are located.
+  local worktree_parent="$HOME/dev"
+
+  # Retrieve all active worktrees (from git worktree list) that match our naming convention.
+  local worktrees=()
+  while IFS= read -r line; do
+    # Extract the worktree path (first field)
+    local wt_path
+    wt_path=$(echo "$line" | awk '{print $1}')
+    # Only consider worktrees under our fixed parent directory that match "<repo_name>-*"
+    if [[ "$wt_path" == "$worktree_parent/${repo_name}-"* ]]; then
+      worktrees+=("$wt_path")
+    fi
+  done < <(git worktree list)
+
+  # Check that the target branch worktree exists.
+  local target_worktree=""
+  for wt in "${worktrees[@]}"; do
+    if [[ "$wt" == "$worktree_parent/${repo_name}-${branch_to_keep}" ]]; then
+      target_worktree="$wt"
+      break
+    fi
+  done
+
+  if [[ -z "$target_worktree" ]]; then
+    echo "Error: No active worktree found for branch '${branch_to_keep}' under ${worktree_parent}."
+    return 1
+  fi
+
+  # Step 1: In the target worktree, check for uncommitted changes.
+  echo "Checking for uncommitted changes in worktree for branch '${branch_to_keep}'..."
+  if ! ( cd "$target_worktree" && git diff --quiet && git diff --cached --quiet ); then
+    echo "Changes detected in branch '${branch_to_keep}'. Attempting auto-commit..."
+    if ! ( cd "$target_worktree" &&
+            git add . &&
+            git commit -m "chore: auto-commit changes in '${branch_to_keep}' before merge" ); then
+      echo "Error: Auto-commit failed in branch '${branch_to_keep}'. Aborting merge."
+      return 1
+    else
+      echo "Auto-commit successful in branch '${branch_to_keep}'."
+    fi
+  else
+    echo "No uncommitted changes found in branch '${branch_to_keep}'."
+  fi
+
+  # Step 2: Switch to the main worktree (assumed to be the current directory) and check out main.
+  echo "Switching to 'main' branch in the main worktree..."
+  if ! git checkout main; then
+    echo "Error: Failed to switch to 'main' branch."
+    return 1
+  fi
+
+  # Step 3: Merge the target branch into main.
+  echo "Merging branch '${branch_to_keep}' into 'main'..."
+  if ! git merge "${branch_to_keep}" -m "feat: merge changes from '${branch_to_keep}'"; then
+    echo "Error: Merge failed. Please resolve conflicts and try again."
+    return 1
+  fi
+
+  echo "Successfully merged branch '${branch_to_keep}' into 'main'."
+
+  # Step 4: Clean up worktrees only if --cleanup-all flag is provided
+  if $cleanup_all; then
+    echo "Cleanup flag detected. Cleaning up worktrees and deleting temporary branches..."
+    for wt in "${worktrees[@]}"; do
+      # Extract branch name from worktree path.
+      local wt_branch
+      wt_branch=$(basename "$wt")
+      wt_branch=${wt_branch#${repo_name}-}  # Remove the repo name prefix
+
+      echo "Processing worktree for branch '${wt_branch}' at ${wt}..."
+      # Remove the worktree using --force to ensure removal.
+      if git worktree remove "$wt" --force; then
+        echo "Worktree at ${wt} removed."
+      else
+        echo "Warning: Failed to remove worktree at ${wt}."
+      fi
+
+      # Do not delete the 'main' branch.
+      if [[ "$wt_branch" != "main" ]]; then
+        if git branch -D "$wt_branch"; then
+          echo "Branch '${wt_branch}' deleted."
+        else
+          echo "Warning: Failed to delete branch '${wt_branch}'."
+        fi
+      fi
+    done
+    echo "Merge and cleanup complete: Branch '${branch_to_keep}' merged into 'main', and all worktrees cleaned up."
+  else
+    echo "Merge complete: Branch '${branch_to_keep}' merged into 'main'. Other worktrees preserved."
+  fi
+} 

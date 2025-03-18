@@ -22,7 +22,6 @@ ZSH_THEME="agnoster"
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
 plugins=(
-  zsh-nvm
   command-not-found
   git
   history
@@ -32,7 +31,6 @@ plugins=(
   web-search
   zsh-syntax-highlighting
   yarn
-  yarn-autocompletions
   tmuxinator
   docker
   encode64
@@ -86,3 +84,42 @@ export PATH="$PATH:$HOME/.rvm/bin"
 # key mappings have changed in iterm settings as well
 bindkey "^[a" beginning-of-line
 bindkey "^[e" end-of-line
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/opt/miniconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/opt/miniconda3/etc/profile.d/conda.sh" ]; then
+        . "/opt/miniconda3/etc/profile.d/conda.sh"
+    else
+        export PATH="/opt/miniconda3/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda initialize <<<
+
+
+source /Users/vasilyshelkov/.docker/init-zsh.sh || true # Added by Docker Desktop
+
+# pnpm
+export PNPM_HOME="/Users/vasilyshelkov/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
+
+[ -f ~/.inshellisense/key-bindings.zsh ] && source ~/.inshellisense/key-bindings.zsh
+# bun completions
+[ -s "/Users/vasilyshelkov/.bun/_bun" ] && source "/Users/vasilyshelkov/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+PATH=~/.console-ninja/.bin:$PATH
+
+# Load custom functions
+source ~/.zsh_functions/git-worktree.zsh
