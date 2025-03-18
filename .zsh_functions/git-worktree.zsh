@@ -1,3 +1,26 @@
+# Sanitize a branch name for use in directory names
+# Usage: sanitize_branch_name "branch-name"
+# Returns a sanitized version of the branch name, safe for filesystem paths
+sanitize_branch_name() {
+  local branch="$1"
+  # Replace slashes with dashes
+  local sanitized="${branch//\//-}"
+  # Replace other problematic characters
+  sanitized="${sanitized//\?/-}"
+  sanitized="${sanitized//\*/-}"
+  sanitized="${sanitized//\[/-}"
+  sanitized="${sanitized//\]/-}"
+  sanitized="${sanitized//:/-}"
+  sanitized="${sanitized//\"/-}"
+  sanitized="${sanitized//\'/-}"
+  sanitized="${sanitized//</-}"
+  sanitized="${sanitized//>/-}"
+  sanitized="${sanitized//|/-}"
+  sanitized="${sanitized//\\/-}"
+  # Return the sanitized name
+  echo "$sanitized"
+}
+
 # wtree: Create a new worktree for each given branch.
 # Usage: wtree [ -p|--pnpm ] [ -n|--no-env ] [ -q|--quiet ] branch1 branch2 ...
 #
@@ -85,8 +108,11 @@ wtree() {
 
   # Loop over each branch provided as argument.
   for branch in "${branches[@]}"; do
-    # Define the target path using a naming convention: <repoName>-<branch>
-    local target_path="$worktree_parent/${repo_name}-${branch}"
+    # Sanitize branch name for filesystem use
+    local sanitized_branch=$(sanitize_branch_name "$branch")
+    
+    # Define the target path using a naming convention: <repoName>-<sanitized_branch>
+    local target_path="$worktree_parent/${repo_name}-${sanitized_branch}"
     
     if ! $quiet_mode; then
       echo "\033[1;36m→ Processing branch: \033[1;33m${branch}\033[0m"
@@ -343,6 +369,8 @@ wtls() {
       if [[ -z "$wt_branch" ]]; then
         local dir_name=$(basename "$wt_path")
         if [[ "$dir_name" == "$repo_name-"* ]]; then
+          # Here we need to reverse the sanitization to guess the original branch name
+          # But this is a best-effort - we just remove the repo name prefix
           wt_branch="${dir_name#$repo_name-}"
           if $debug; then echo "Branch from directory name: $wt_branch"; fi
         else
@@ -535,7 +563,9 @@ wtls() {
     
     # If not found in git worktree list, try looking in the dev directory
     if [[ -z "$branch_path" ]]; then
-      local potential_path="$worktree_parent/$repo_name-$branch"
+      # Sanitize branch name for filesystem lookup
+      local sanitized_branch=$(sanitize_branch_name "$branch")
+      local potential_path="$worktree_parent/$repo_name-$sanitized_branch"
       if [[ -d "$potential_path" ]]; then
         branch_path="$potential_path"
       fi
@@ -659,8 +689,11 @@ wtmerge() {
 
   # Check that the target branch worktree exists.
   local target_worktree=""
+  # Sanitize branch name for filesystem lookup
+  local sanitized_branch=$(sanitize_branch_name "$branch_to_keep")
+  
   for wt in "${worktrees[@]}"; do
-    if [[ "$wt" == "$worktree_parent/${repo_name}-${branch_to_keep}" ]]; then
+    if [[ "$wt" == "$worktree_parent/${repo_name}-${sanitized_branch}" ]]; then
       target_worktree="$wt"
       break
     fi
@@ -709,8 +742,16 @@ wtmerge() {
     for wt in "${worktrees[@]}"; do
       # Extract branch name from worktree path.
       local wt_branch
-      wt_branch=$(basename "$wt")
-      wt_branch=${wt_branch#${repo_name}-}  # Remove the repo name prefix
+      local dir_name=$(basename "$wt")
+      
+      # Extract the original branch name - this is a best effort since we don't have the mapping
+      # from sanitized names back to original branch names
+      if [[ "$dir_name" == "$repo_name-"* ]]; then
+        wt_branch="${dir_name#$repo_name-}"
+      else
+        wt_branch=$(cd "$wt" && git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        [[ -z "$wt_branch" ]] && wt_branch="unknown"
+      fi
 
       echo "Processing worktree for branch '${wt_branch}' at ${wt}..."
       # Remove the worktree using --force to ensure removal.
@@ -733,4 +774,25 @@ wtmerge() {
   else
     echo "Merge complete: Branch '${branch_to_keep}' merged into 'main'. Other worktrees preserved."
   fi
+}
+
+# Convenience function to test that branch sanitization works correctly
+# Usage: wtree_test_sanitize "branch/with/slashes" "branch*with*stars" "branch?with?questions"
+wtree_test_sanitize() {
+  if [[ $# -eq 0 ]]; then
+    echo "Usage: wtree_test_sanitize <branch-name-1> <branch-name-2> ..."
+    echo "Tests that branch name sanitization works correctly for special characters."
+    return 1
+  fi
+  
+  echo "\033[1;36m=== Testing branch name sanitization ===\033[0m"
+  for branch in "$@"; do
+    local sanitized=$(sanitize_branch_name "$branch")
+    echo "Original: \033[1;33m$branch\033[0m"
+    echo "Sanitized: \033[1;32m$sanitized\033[0m"
+    echo "--------------------------"
+  done
+  
+  echo "\033[1;36mThese sanitized names would be used in directory paths.\033[0m"
+  echo "\033[1;36mThe original branch names would still be used for git operations.\033[0m"
 } 
