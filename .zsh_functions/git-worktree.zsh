@@ -1,20 +1,26 @@
 # wtree: Create a new worktree for each given branch.
-# Usage: wtree [ -p|--pnpm ] branch1 branch2 ...
+# Usage: wtree [ -p|--pnpm ] [ -n|--no-env ] branch1 branch2 ...
+#
+# Options:
+#   -p, --pnpm: Run "pnpm install" in the new worktree after creating it
+#   -n, --no-env: Skip copying environment files from the main repository
 #
 # This function does the following:
-#   1. Parses command-line arguments; if -p/--pnpm is provided, it will later run "pnpm install".
+#   1. Parses command-line arguments.
 #   2. Determines the current branch and repository root.
 #   3. Uses a fixed parent directory (~/dev) to house all worktree directories.
 #   4. For each branch passed:
 #        - If the branch does not exist, it is created from the current branch.
 #        - It checks that a worktree for that branch does not already exist.
 #        - It then creates a worktree in ~/dev using a naming convention: <repoName>-<branch>.
-#        - If the install-deps flag is true, it runs "pnpm install" inside the new worktree.
+#        - It copies all environment files (.env*) from the main repository to the new worktree.
+#        - If the --pnpm flag is set, it runs "pnpm install" inside the new worktree.
 #        - Finally, it either opens the new worktree via the custom "cursor" command (if defined)
 #          or prints its path.
 wtree() {
-  # Flag to determine whether to run "pnpm install"
+  # Flags for optional behavior
   local install_deps=false
+  local copy_env=true
   local branches=()
 
   # Parse command-line arguments
@@ -22,6 +28,10 @@ wtree() {
     case "$1" in
       -p|--pnpm)
         install_deps=true
+        shift
+        ;;
+      -n|--no-env)
+        copy_env=false
         shift
         ;;
       *)
@@ -33,7 +43,9 @@ wtree() {
 
   # Ensure at least one branch name is provided.
   if [[ ${#branches[@]} -eq 0 ]]; then
-    echo "Usage: wtree [ -p|--pnpm ] branch1 branch2 ..."
+    echo "Usage: wtree [ -p|--pnpm ] [ -n|--no-env ] branch1 branch2 ..."
+    echo "  -p, --pnpm: Run \"pnpm install\" in the new worktree"
+    echo "  -n, --no-env: Skip copying environment files"
     return 1
   fi
 
@@ -91,7 +103,60 @@ wtree() {
       continue
     fi
 
-    # Note: Environment file copying section removed for now
+    # Copy all .env files recursively from the main repository to the new worktree
+    if $copy_env; then
+      echo "Copying environment files to new worktree..."
+      # Find all .env* files in the main repository (including .env, .env.local, .env.development, etc.)
+      local env_files=()
+      while IFS= read -r -d '' file; do
+        # Skip files in node_modules, .git, and other common directories to exclude
+        if [[ "$file" != *"node_modules"* && "$file" != *".git"* && "$file" != *"dist"* && "$file" != *"build"* ]]; then
+          env_files+=("$file")
+        fi
+      done < <(find "$repo_root" -type f -name ".env*" -print0 2>/dev/null)
+      
+      if [[ ${#env_files[@]} -gt 0 ]]; then
+        local copied_count=0
+        local skipped_count=0
+        
+        for env_file in "${env_files[@]}"; do
+          # Get the relative path from the repo root
+          local rel_path="${env_file#$repo_root/}"
+          # Create the target directory if it doesn't exist
+          local target_dir="$target_path/$(dirname "$rel_path")"
+          local target_file="$target_dir/$(basename "$env_file")"
+          
+          # Check if the file already exists in the target
+          if [[ -f "$target_file" ]]; then
+            echo "  Skipped: $rel_path (already exists)"
+            skipped_count=$((skipped_count + 1))
+            continue
+          fi
+          
+          # Create directory if needed
+          if [[ ! -d "$target_dir" ]]; then
+            if ! mkdir -p "$target_dir"; then
+              echo "  Error: Could not create directory for $rel_path"
+              skipped_count=$((skipped_count + 1))
+              continue
+            fi
+          fi
+          
+          # Copy the file
+          if cp "$env_file" "$target_file"; then
+            echo "  Copied: $rel_path"
+            copied_count=$((copied_count + 1))
+          else
+            echo "  Error: Failed to copy $rel_path"
+            skipped_count=$((skipped_count + 1))
+          fi
+        done
+        
+        echo "Environment files: $copied_count copied, $skipped_count skipped."
+      else
+        echo "No environment files found to copy."
+      fi
+    fi
 
     # If the install flag is set, run "pnpm install" in the new worktree.
     if $install_deps; then
