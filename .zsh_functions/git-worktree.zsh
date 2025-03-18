@@ -185,8 +185,8 @@ wtls() {
   fi
   
   # Print header for worktree list
-  echo "Worktrees for repository '$repo_name':"
-  echo "----------------------------------------------------------"
+  echo "\033[1;36m=== Worktrees for repository '$repo_name' ===\033[0m"
+  echo "\033[1;30m----------------------------------------------------------\033[0m"
   
   # Initialize counters
   local main_count=0
@@ -194,7 +194,7 @@ wtls() {
   
   # Print the main repository first
   local main_branch=$(git rev-parse --abbrev-ref HEAD)
-  echo "[MAIN] $main_branch (current)"
+  echo "\033[1;32m[MAIN]\033[0m \033[1;33m$main_branch\033[0m (current)"
   echo "    Path: $repo_root"
   main_count=1
   
@@ -295,14 +295,14 @@ wtls() {
               if [[ "$merge_base" == "$main_commit" ]]; then
                 # Main is an ancestor of the worktree, so worktree is ahead
                 local ahead_count=$(cd "$wt_path" && git rev-list --count "$main_commit..$wt_commit")
-                wt_state="unique commits ($ahead_count ahead of main)"
+                wt_state="\033[1;33m✨ $ahead_count new commit(s)\033[0m"
                 if $debug; then
                   echo "DEBUG: Worktree is ahead of main by $ahead_count commits"
                 fi
               elif [[ "$merge_base" == "$wt_commit" ]]; then
                 # Worktree is an ancestor of main, so worktree is behind
                 local behind_count=$(cd "$wt_path" && git rev-list --count "$wt_commit..$main_commit")
-                wt_state="behind main ($behind_count commits)"
+                wt_state="\033[1;36m⬇️ behind main by $behind_count commit(s)\033[0m"
                 if $debug; then
                   echo "DEBUG: Worktree is behind main by $behind_count commits"
                 fi
@@ -310,13 +310,13 @@ wtls() {
                 # They have diverged
                 local ahead_count=$(cd "$wt_path" && git rev-list --count "$merge_base..$wt_commit")
                 local behind_count=$(cd "$wt_path" && git rev-list --count "$merge_base..$main_commit")
-                wt_state="diverged from main (ahead $ahead_count, behind $behind_count)"
+                wt_state="\033[1;33m🔀 diverged from main\033[0m"
                 if $debug; then
                   echo "DEBUG: Worktree has diverged: ahead $ahead_count, behind $behind_count"
                 fi
               fi
             else
-              wt_state="identical to main branch"
+              wt_state="\033[1;32m✓ identical to main\033[0m"
               if $debug; then
                 echo "DEBUG: Commits are identical"
               fi
@@ -329,57 +329,43 @@ wtls() {
               fi
               
               # Check if we're ahead/behind remote
-              local remote_state=""
               local ahead_count=$(cd "$wt_path" && git rev-list --count "origin/$wt_branch..$wt_branch" 2>/dev/null || echo "0")
               local behind_count=$(cd "$wt_path" && git rev-list --count "$wt_branch..origin/$wt_branch" 2>/dev/null || echo "0")
               
-              if [[ $ahead_count -gt 0 && $behind_count -gt 0 ]]; then
-                remote_state=", diverged from remote (ahead $ahead_count, behind $behind_count)"
-              elif [[ $ahead_count -gt 0 ]]; then
-                remote_state=", unpushed commits ($ahead_count)"
-              elif [[ $behind_count -gt 0 ]]; then
-                remote_state=", behind remote ($behind_count)"
-              else
-                remote_state=", synced with remote"
+              if [[ $ahead_count -gt 0 ]]; then
+                wt_state="$wt_state \033[1;33m(unpushed changes ↑)\033[0m"
               fi
-              
-              # Append remote state to the main state message
-              wt_state="$wt_state$remote_state"
             else
-              if $debug; then
-                echo "DEBUG: Branch doesn't exist on remote"
-              fi
-              # Only show local-only if we haven't already noted a relationship with main
-              if [[ "$wt_state" == "identical to main branch" ]]; then
-                wt_state="clean (local only)"
+              if [[ "$wt_state" != "\033[1;32m✓ identical to main\033[0m" ]]; then
+                wt_state="$wt_state \033[1;30m(local only)\033[0m"
               else
-                wt_state="$wt_state (local only)"
+                wt_state="\033[1;32m✓ clean\033[0m \033[1;30m(local only)\033[0m"
               fi
             fi
           else
             # Has uncommitted changes
             if ( cd "$wt_path" && git diff --no-ext-diff --quiet --exit-code ); then
-              wt_state="staged changes"
+              wt_state="\033[1;31m⚠️ staged changes\033[0m"
             else
-              wt_state="uncommitted changes"
+              wt_state="\033[1;31m⚠️ uncommitted changes\033[0m"
             fi
             if $debug; then
               echo "DEBUG: Has changes: $wt_state"
             fi
           fi
         else
-          wt_state="directory not accessible"
+          wt_state="\033[1;37m⚠️ directory not accessible\033[0m"
           if $debug; then
             echo "DEBUG: Directory not accessible"
           fi
         fi
       fi
       
-      # Display the worktree
+      # Display the worktree with improved formatting
       if $show_status; then
-        echo "[$wt_branch] $wt_branch$marker - State: $wt_state"
+        echo "\033[1;34m[$wt_branch]\033[0m \033[1;33m$wt_branch\033[0m$marker - $wt_state"
       else
-        echo "[$wt_branch] $wt_branch$marker"
+        echo "\033[1;34m[$wt_branch]\033[0m \033[1;33m$wt_branch\033[0m$marker"
       fi
       echo "    Path: $wt_path"
       
@@ -392,7 +378,7 @@ wtls() {
   done <<< "$git_worktree_output"
   
   # Show total count
-  echo "----------------------------------------------------------"
+  echo "\033[1;30m----------------------------------------------------------\033[0m"
   echo "Found $main_count main worktree(s) and $worktree_count additional worktree(s)"
   
   # Exit if no additional worktrees found
@@ -401,9 +387,11 @@ wtls() {
     return 0
   fi
   
-  # Prompt for cleanup
-  echo "----------------------------------------------------------"
-  echo "Enter the branch names to clean up (space-separated), or press Enter to exit:"
+  # Prompt for cleanup with clearer instructions
+  echo "\033[1;30m----------------------------------------------------------\033[0m"
+  echo "\033[1;36mTo clean up worktrees, enter the branch names shown in [brackets].\033[0m"
+  echo "\033[1;36mExample: to remove [test-wt], type 'test-wt'\033[0m"
+  echo "Enter branch names to clean up (space-separated), or press Enter to exit:"
   read -r selection
   
   if [[ -z "$selection" ]]; then
@@ -418,19 +406,19 @@ wtls() {
     
     # Skip main/master
     if [[ "$branch" == "main" || "$branch" == "master" ]]; then
-      echo "Cannot remove main/master branch. Skipping."
+      echo "\033[1;31mCannot remove main/master branch. Skipping.\033[0m"
       continue
     fi
     
     # Find the worktree path for this branch
     local branch_path=""
+    
+    # Use a more reliable method to extract the path from git worktree list output
     while IFS= read -r line; do
-      # Extract the path (first field) directly without using awk
-      local line_path=$(echo "$line" | cut -d' ' -f1)
-      
-      # Check if this line contains our branch
+      # Only process lines that have our branch name in brackets
       if [[ "$line" =~ \[([^]]+)\] && "${BASH_REMATCH[1]}" == "$branch" ]]; then
-        branch_path="$line_path"
+        # Extract path (first field) by trimming everything after the first space
+        branch_path="${line%% *}"
         break
       fi
     done <<< "$git_worktree_output"
@@ -445,22 +433,22 @@ wtls() {
     
     # Skip if not found
     if [[ -z "$branch_path" ]]; then
-      echo "No worktree found for branch '$branch'. Skipping."
+      echo "\033[1;31mNo worktree found for branch '$branch'. Skipping.\033[0m"
       continue
     fi
     
     # Skip if it's the current worktree
     if [[ "$branch_path" == "$current_worktree" ]]; then
-      echo "Cannot remove current worktree at $branch_path. Skipping."
+      echo "\033[1;31mCannot remove current worktree at $branch_path. Skipping.\033[0m"
       continue
     fi
     
-    echo "Cleaning up worktree for branch '$branch' at $branch_path..."
+    echo "\033[1;36mCleaning up worktree for branch '$branch' at $branch_path...\033[0m"
     
     # Check for changes
     if $show_status; then
       if ! ( cd "$branch_path" && git diff --no-ext-diff --quiet --exit-code && git diff --no-ext-diff --quiet --exit-code --cached ); then
-        echo "Warning: This worktree has uncommitted changes."
+        echo "\033[1;33mWarning: This worktree has uncommitted changes.\033[0m"
         read -q "REPLY?Are you sure you want to remove it? (y/n) "
         echo
         
@@ -473,29 +461,29 @@ wtls() {
     
     # Remove the worktree
     if git worktree remove "$branch_path" --force; then
-      echo "Worktree at $branch_path removed."
+      echo "\033[1;32mWorktree at $branch_path removed.\033[0m"
       
       # Delete the branch
       echo "Deleting branch '$branch'..."
       if git branch -D "$branch"; then
-        echo "Branch '$branch' deleted."
+        echo "\033[1;32mBranch '$branch' deleted.\033[0m"
       else
-        echo "Warning: Failed to delete branch '$branch'."
+        echo "\033[1;33mWarning: Failed to delete branch '$branch'.\033[0m"
       fi
     else
-      echo "Warning: Failed to remove worktree at $branch_path."
+      echo "\033[1;33mWarning: Failed to remove worktree at $branch_path.\033[0m"
       
       # Try manual removal
       echo "Attempting manual directory removal..."
       if rm -rf "$branch_path"; then
-        echo "Directory $branch_path manually removed."
+        echo "\033[1;32mDirectory $branch_path manually removed.\033[0m"
       else
-        echo "Error: Failed to manually remove directory $branch_path."
+        echo "\033[1;31mError: Failed to manually remove directory $branch_path.\033[0m"
       fi
     fi
   done
   
-  echo "Cleanup complete."
+  echo "\033[1;32mCleanup complete.\033[0m"
 }
 
 
