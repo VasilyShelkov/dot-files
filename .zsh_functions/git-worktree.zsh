@@ -10,7 +10,9 @@
 #   2. Determines the current branch and repository root.
 #   3. Uses a fixed parent directory (~/dev) to house all worktree directories.
 #   4. For each branch passed:
-#        - If the branch does not exist, it is created from the current branch.
+#        - If the branch does not exist locally:
+#          - Checks if a remote branch with the same name exists and sets up tracking
+#          - If no remote branch exists, creates a new branch from the current branch
 #        - It checks that a worktree for that branch does not already exist.
 #        - It then creates a worktree in ~/dev using a naming convention: <repoName>-<branch>.
 #        - It copies all environment files (.env*) from the main repository to the new worktree.
@@ -87,12 +89,27 @@ wtree() {
       continue
     fi
 
-    # If the branch does not exist, create it from the current branch.
+    # If the branch does not exist, check for a remote branch
     if ! git show-ref --verify --quiet "refs/heads/${branch}"; then
-      echo "Branch '${branch}' does not exist. Creating it from '${current_branch}'..."
-      if ! git branch "${branch}"; then
-        echo "Error: Failed to create branch '${branch}'. Skipping."
-        continue
+      # Check if a remote branch with the same name exists
+      if git ls-remote --exit-code --heads origin "${branch}" &>/dev/null; then
+        echo "Remote branch 'origin/${branch}' exists. Creating local branch to track it..."
+        if ! git fetch origin "${branch}"; then
+          echo "Error: Failed to fetch 'origin/${branch}'. Skipping."
+          continue
+        fi
+        if ! git branch --track "${branch}" "origin/${branch}"; then
+          echo "Error: Failed to create tracking branch for 'origin/${branch}'. Skipping."
+          continue
+        fi
+        echo "Created local branch '${branch}' tracking 'origin/${branch}'."
+      else
+        # No remote branch exists, create from current branch
+        echo "Branch '${branch}' does not exist locally or remotely. Creating it from '${current_branch}'..."
+        if ! git branch "${branch}"; then
+          echo "Error: Failed to create branch '${branch}'. Skipping."
+          continue
+        fi
       fi
     fi
 
