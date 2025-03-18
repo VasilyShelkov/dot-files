@@ -10,7 +10,6 @@ setopt CORRECT
 export ZSH=/Users/vasilyshelkov/.oh-my-zsh
 export PGDATA='/usr/local/var/postgres'
 export PGHOST=localhost
-export PATH="$PATH:`yarn global bin`"
 
 # Set name of the theme to load. Optionally, if you set this to "random"
 # it'll load a random theme each time that oh-my-zsh is loaded.
@@ -32,9 +31,13 @@ plugins=(
   zsh-syntax-highlighting
   yarn
   tmuxinator
-  docker
   encode64
 )
+
+# Only load docker plugin if docker is installed
+if command -v docker &> /dev/null; then
+  plugins+=(docker)
+fi
 
 export EDITOR="vim"
 export USE_EDITOR=$EDITOR
@@ -75,6 +78,11 @@ alias mux='tmuxinator'
 export NVM_DIR="/Users/vasilyshelkov/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm
 
+# Now that nvm/node/yarn are loaded, we can safely add yarn global bin to PATH
+if command -v yarn &> /dev/null; then
+  export PATH="$PATH:$(yarn global bin)"
+fi
+
 source ~/.tmuxinator.zsh
 
 # Add RVM to PATH for scripting. Make sure this is the last PATH variable change.
@@ -100,8 +108,10 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
-
-source /Users/vasilyshelkov/.docker/init-zsh.sh || true # Added by Docker Desktop
+# Only source Docker init script if it exists
+if [ -f "/Users/vasilyshelkov/.docker/init-zsh.sh" ]; then
+  source /Users/vasilyshelkov/.docker/init-zsh.sh
+fi
 
 # pnpm
 export PNPM_HOME="/Users/vasilyshelkov/Library/pnpm"

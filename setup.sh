@@ -23,7 +23,7 @@ create_symlink() {
     local source_file="$1"
     local target_file="$2"
     local file_description="$3"
-    
+   
     # Check if the target file exists and is a symlink
     if [ -L "${target_file}" ]; then
         echo -e "${YELLOW}⟳ Updating:${NC} ${file_description}"
@@ -41,7 +41,7 @@ create_symlink() {
     else
         echo -e "${BLUE}+ Creating:${NC} ${file_description}"
     fi
-    
+   
     # Create the symbolic link
     if ln -s "${source_file}" "${target_file}"; then
         successful_links+=("${file_description}")
@@ -56,6 +56,25 @@ create_symlink() {
 # Create all necessary directories
 echo -e "${BLUE}Creating directories...${NC}"
 mkdir -p "${HOME}/.zsh_functions"
+
+# Install ZSH plugins if missing
+echo -e "${BLUE}Setting up ZSH plugins...${NC}"
+ZSH_CUSTOM="${HOME}/.oh-my-zsh/custom"
+
+# Install zsh-syntax-highlighting if missing
+if [ ! -d "${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting" ]; then
+    echo -e "${BLUE}Installing zsh-syntax-highlighting...${NC}"
+    if git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting"; then
+        successful_links+=("ZSH syntax highlighting plugin")
+        echo -e "${GREEN}✓ Installed:${NC} zsh-syntax-highlighting plugin"
+    else
+        echo -e "${RED}✗ Failed to install:${NC} zsh-syntax-highlighting plugin"
+        failed_links+=("ZSH syntax highlighting plugin")
+    fi
+else
+    echo -e "${YELLOW}⟳ Already installed:${NC} zsh-syntax-highlighting plugin"
+    skipped_links+=("ZSH syntax highlighting plugin")
+fi
 
 # ZSH
 create_symlink "${BASEDIR}/.zshrc" "${HOME}/.zshrc" "ZSH configuration (.zshrc)"
@@ -79,6 +98,14 @@ if [ ${#successful_links[@]} -gt 0 ]; then
     echo -e "${GREEN}Successfully configured:${NC}"
     for item in "${successful_links[@]}"; do
         echo -e "  ${GREEN}✓${NC} $item"
+    done
+    echo ""
+fi
+
+if [ ${#skipped_links[@]} -gt 0 ]; then
+    echo -e "${YELLOW}Already installed:${NC}"
+    for item in "${skipped_links[@]}"; do
+        echo -e "  ${YELLOW}⟳${NC} $item"
     done
     echo ""
 fi
