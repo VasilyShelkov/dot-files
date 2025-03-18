@@ -251,21 +251,26 @@ wtree() {
 
 # wtls: List and optionally clean up selected git worktrees
 #
-# Usage: wtls [-n|--no-status] [-d|--debug]
+# Usage: wtls [-n|--no-status] [-d|--debug] [-c|--cleanup-all] [-y|--yes]
 #
 # Options:
 #   -n, --no-status: Hide git status for each worktree (uncommitted changes, etc.)
 #   -d, --debug: Show detailed debug output about worktree detection
+#   -c, --cleanup-all: Automatically clean up all worktrees (except main/master)
+#   -y, --yes: Skip confirmation prompts (use with caution)
 #
 # This function:
 #   1. Lists all worktrees in the ~/dev directory related to the current repository
 #   2. Shows git status information for each worktree by default
 #   3. Allows the user to select which worktrees to clean up by entering branch names
 #   4. Deletes the selected worktrees and their branches (except main/master)
+#   5. With --cleanup-all, automatically removes all worktrees except the main/master branch
 wtls() {
   # Parse command-line arguments
   local debug=false
   local show_status=true # Default to showing status
+  local cleanup_all=false
+  local skip_confirm=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -d|--debug)
@@ -278,6 +283,14 @@ wtls() {
         ;;
       -s|--status) # Keep for backward compatibility
         show_status=true
+        shift
+        ;;
+      -c|--cleanup-all)
+        cleanup_all=true
+        shift
+        ;;
+      -y|--yes)
+        skip_confirm=true
         shift
         ;;
       *)
@@ -334,7 +347,11 @@ wtls() {
   echo "    Path: $repo_root"
   main_count=1
   
-  # Process git worktree list output
+  # Store all found branches to help with cleanup
+  local all_branch_names=()
+  local all_branch_paths=()
+  
+  # Process git worktree list output and collect branches
   while IFS= read -r line; do
     # Skip empty lines
     [[ -z "$line" ]] && continue
@@ -388,6 +405,10 @@ wtls() {
     
     # Add this worktree if it's in our dev directory
     if [[ "$wt_path" == "$worktree_parent/$repo_name"* ]]; then
+      # Store the branch name and path for possible cleanup
+      all_branch_names+=("$wt_branch")
+      all_branch_paths+=("$wt_path")
+      
       # Mark if current
       local marker=""
       [[ "$wt_path" == "$current_worktree" ]] && marker=" (current)"
@@ -525,16 +546,39 @@ wtls() {
     return 0
   fi
   
-  # Prompt for cleanup with clearer instructions
-  echo "\033[1;30m----------------------------------------------------------\033[0m"
-  echo "\033[1;36mTo clean up worktrees, enter the branch names shown in [brackets].\033[0m"
-  echo "\033[1;36mExample: to remove [test-wt], type 'test-wt'\033[0m"
-  echo "Enter branch names to clean up (space-separated), or press Enter to exit:"
-  read -r selection
-  
-  if [[ -z "$selection" ]]; then
-    echo "No worktrees selected for cleanup. Exiting."
-    return 0
+  # Get selection - either from the cleanup_all flag or interactively
+  local selection=""
+  if $cleanup_all; then
+    echo "\033[1;36mAutomatic cleanup mode: preparing to remove all non-main worktrees...\033[0m"
+    
+    # Use all branch names we've collected during processing
+    selection="${all_branch_names[*]}"
+    
+    # Show what we're about to clean up
+    echo "\033[1;33mWorktrees to remove: $selection\033[0m"
+    
+    # Ask for confirmation unless skip_confirm is set
+    if ! $skip_confirm; then
+      read -q "REPLY?Are you sure you want to remove all these worktrees? (y/n) "
+      echo
+      
+      if [[ $REPLY != "y" ]]; then
+        echo "Cleanup cancelled."
+        return 0
+      fi
+    fi
+  else
+    # Prompt for cleanup with clearer instructions
+    echo "\033[1;30m----------------------------------------------------------\033[0m"
+    echo "\033[1;36mTo clean up worktrees, enter the branch names shown in [brackets].\033[0m"
+    echo "\033[1;36mExample: to remove [test-wt], type 'test-wt'\033[0m"
+    echo "Enter branch names to clean up (space-separated), or press Enter to exit:"
+    read -r selection
+    
+    if [[ -z "$selection" ]]; then
+      echo "No worktrees selected for cleanup. Exiting."
+      return 0
+    fi
   fi
   
   # Process selection
